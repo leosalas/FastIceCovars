@@ -1,23 +1,94 @@
-library(rgdal)
-library(rgeos)
-library(dplyr)
-library(httr)
-library(xml2)
-library(proj4)
-library(raster)
-library(maptools) #for polygon union command (depends on rgeos)
-library(stringr) #for string subs
 
-dir.create("dissolve-example")
-setwd("//prbo.org/Data/Home/Petaluma/djongsomjit/Documents/projects/sealsfromspace/nic_ice/")
+# Load packages
+# list packages required
+list.of.packages <- c("rgdal", "proj4","rgeos","maptools","raster","stringr","dplyr","xml2","pacman","httr")
+# compare to existing packages
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+# install missing packages
+if(length(new.packages)>0) {install.packages(new.packages)}
+pacman::p_load(rgdal, proj4,rgeos,maptools,raster,stringr,dplyr,xml2,pacman,httr) 
+
+#########################
+#Set variables and define functions
+#########################
 
 
-# Read the feature class 5km grid sample points This will be the pre-attributed set of points.
-pointdsn<-"//prbo.org/Data/Home/Petaluma/djongsomjit/Documents/projects/sealsfromspace/projected/fasticepoints5km.shp"
-pts <- readOGR(dsn=pointdsn,layer="fasticepoints5km")
+#SET YOUR WORKING DIRECTORY
+working.dir<-"//prbo.org/Data/Home/Petaluma/djongsomjit/Documents/projects/sealsfromspace/testing/"
+#location where downloaded NIC ice layers will be saved
+nicsavedir<-"//prbo.org/Data/Home/Petaluma/djongsomjit/Documents/projects/sealsfromspace/testing/"
+#location where analysis results will be saved
+resultsdir<-"//prbo.org/Data/Home/Petaluma/djongsomjit/Documents/projects/sealsfromspace/testing/"
 
+
+setwd(working.dir)
+
+# Read the feature class 5km grid sample points This will be the pre-attributed set of points with 227507
+pointdsn<-"V:/Project/marine/antarctica/seals_from_space/fastice/studyarea_points.shp"
+pts <- readOGR(dsn=pointdsn,layer="studyarea_points")
+#Get main projection that will be used 
 primaryproj<-projection(pts)
 primaryproj<-CRS(primaryproj)
+
+
+
+
+#FUNCTION download and unzip and merge as needed
+getFastIce<-function(filenams){
+
+
+
+print("processing single fast ice date")
+Filelocation<-paste0(address,filenams[1])
+savename<-paste0(nicsavedir,substr(filenams[1],29,46))
+
+set_config( config( ssl_verifypeer = 0L ) )
+
+download.file(Filelocation,destfile=savename,method="libcurl")
+
+
+unzip(savename)	
+
+	
+
+#First function for 1 shapefile
+
+##########################Read unzipped shapefile, Select subset of points from full set.
+#use this subset to attribute with Colony and Fast ice attributes
+
+#Read shapefile
+loopdsn <-paste0(str_sub(savename,0,-5),".shp")
+shpname<-str_sub(savename,-16,-5)
+#read shapefile
+region <- readOGR(dsn=loopdsn,shpname)
+
+#Project to match full points shapefile
+region<-spTransform(region,primaryproj)
+  
+
+# Define fast ice and get region layer for creating land and ocean edges
+region@data$FP <- ifelse(region@data$FP == "08",8,0)
+
+#get fast ice only regions
+fast<-subset(region,region@data$FP == 8)
+
+
+functionList <- list("fast" = fast, "region" = region)
+
+
+return(functionList)
+
+}
+
+
+
+
+
+########################################
+#Downloading NIC ice data sets
+#########################################
+
+
 
 #we send request here
 urlv<-"https://www.natice.noaa.gov/products/weekly_products.html"
@@ -74,138 +145,32 @@ filenams<-character()
 #here getting the address including year
 for(nn in nv){
 
-                filenams<-c(filenams,substr(content(r),nn-5,nn+38))
+    filenams<-c(filenams,substr(content(r),nn-5,nn+38))
 
 }
 
  
 
 #the above include the .html and .xml files. Filter for zips only...
-
 filenams<-subset(filenams,grepl("^[0-9][0-9][0-9][0-9].*hemispheric.*.zip",filenams))
 address<-"https://www.natice.noaa.gov/pub/weekly/antarctic/"  
-savedir<-"//prbo.org/Data/Home/Petaluma/djongsomjit/Documents/projects/sealsfromspace/nic_ice/"
-
-#now download and unzip
-for (ff in filenams){
-
-yy<-paste0(substr(ff,7,8))
-
-Filelocation<-paste0(address,ff)
-savename<-paste0(savedir,substr(ff,29,46))
-
-set_config( config( ssl_verifypeer = 0L ) )
-
-download.file(Filelocation,destfile=savename,method="libcurl")
-
-
-unzip(savename)	
-
-
-
-			
-
-#First function for 1 shapefile
-
-##########################Read unzipped shapefile, Select subset of points from full set.
-#use this subset to attribute with Colony and Fast ice attributes
-
-loopdsn <-paste0(str_sub(savename,0,-5),".shp")
-shpname<-str_sub(savename,-16,-5)
-#read shapefile
-region <- readOGR(dsn=loopdsn,shpname)
-
-#Project to match full points shapefile
-region<-spTransform(region,primaryproj)
-  
-
-# Define fast ice
-region@data$FP <- ifelse(region@data$FP == "08",8,0)
-
-#get fast ice only regions
-fast<-subset(region,region@data$FP == 8)
-
-#each time through this function store results in a list
-
-
-}
 
 
 
 
-#Here add second function if more than 1 date.  Need a if nrow>1 then run second function
-
-####!!! If more than 1 date, Process next ice date data and Union
-
-
-#now download and unzip
-mylist <- list()
-for (ff in 1:length(filenams)){
-
-##########################Read unzipped shapefiles and add to list, 
+#run function
+myareas<-getFastIce(filenams)
 
 
+###########################
+ #Section to create fast ice edge and landward edge lines
+###########################
 
-Filelocation<-paste0(address,filenams[ff])
-savename<-paste0(savedir,substr(filenams[ff],29,46))
+region<-myareas$region
+fast<-myareas$fast
 
-set_config( config( ssl_verifypeer = 0L ) )
-
-download.file(Filelocation,destfile=savename,method="libcurl")
-
-
-unzip(savename)	
-
-
-#get name of shapefile with directory location
-loopdsn <-paste0(str_sub(savename,0,-5),".shp")
-shpname<-str_sub(savename,-16,-5)
-
-
-
-#read shapefile
-region <- readOGR(dsn=loopdsn,shpname)
-
-#Project to match full points shapefile
-region<-spTransform(region,primaryproj)
-  
-
-
-#each time through this function store results in a list
-mylist[[ff]] <- region
-
-}
-
-
-mergedpolygons<-do.call(bind, mylist) 
-
-
-# Define fast ice
-mergedpolygons@data$FP <- ifelse(mergedpolygons@data$FP == "08",8,0)
-
-#get fast ice only regions
-fast<-subset(mergedpolygons,mergedpolygons@data$FP == 8)
-
-
-unionfast<- unionSpatialPolygons(fast, ID=fast@data$FP)
-
-
-
-
-
-
-
-
-
-#subset full points within fast ice only
-subsetpoints <- pts[fast,]
- 
- 
- 
- 
- #############  Section to create fast ice edge###########################
 # Dissolve regions based on fast ice or not
-unionfp <- gUnaryUnion(region, id = region@data$FP)
+unionfp <- gUnaryUnion(region, id = region@data$FP)  #fails due to topology error
 
 
 #create line of fast ice edge away from continent
@@ -215,25 +180,81 @@ oceanedge = gDifference(
    byid=TRUE)
    
 
-   
-   #create line of fast ice edge nearest to continent
-  landedge<-as(gUnaryUnion(unionfp),"SpatialLines")
-   
+#create line of fast ice edge nearest to continent
+landedge<-as(gUnaryUnion(unionfp),"SpatialLines")
    
    
+
+
+
+
+#Subset ALL points to only those within fast ice
+subsetpoints <- pts[fast,]
+ 
+ 
+   
+   
+
+
+
+
+ 
+ ###############################
+ #Calculate fast ice width
+ ##############################
+ 
+ 
+ 
+ #Section to produce a dataframe which for every sampling location will provide coordinates of nearest vertices point along the landward edge, along with coordinates of sampling location.
+ 
+
+  
+  #convert land edge to df of vertices for use in nearestPointOnLine
+ point_coordinates = c()
+   for (i in 1: length(landedge[1,]@lines[[1]]@Lines)) {
+  line1 <- landedge[1,]@lines[[1]]@Lines[[i]]
+  line1coords <- line1@coords
+  point_coordinates = rbind(point_coordinates, line1coords)
+}
+
+
+ #Get coordinates of nearest point on land together with sampling location and place into data frame (1 row is a xy of the nearest location and xy of the sampling location)
+ near_coordinates = c()
+ 
+#for (ss in 1:length(subsetpoints)){ #this will run all subset points !!!
+
+for (ss in 1:10){  #this will run test on 10 sampling locations
+
+nearland<-nearestPointOnLine(point_coordinates, subsetpoints[ss,]@coords)
+near_coordinates = rbind(near_coordinates, cbind(nearland[1],nearland[2],subsetpoints[ss,]@coords))
+}
+
+
+
+#Next step is to draw a line between them, continue line until it intersects seaward fast edge and cut it off here. Can use gIntersection {rgeos} to find this intersection with the fast object - this takes two sp objects as arguments {sp}. Then Calculate length of line as the width of the fast ice.
+
+
+
+  
+############END Section
    
    
    
    
-      ############################ Attribute subset of points with nearest fast ice ocean edge
-     #create empty base df to store dist
+   
+############################ 
+#Attribute subset of points with distance to nearest fast ice (ocean) edge
+#############################
+
+
+     #create empty base df to store dist. Same length as subset of points
      fasticeedge<-as.data.frame(rep(999.999,length(subsetpoints))
      colnames(edgedist)<-c("fasticeedge")
      
      
      ptm <- proc.time()
        
-     ## For each point, find name of nearest polygon 
+     ## For each point, find nearest distance
      for (i in 1:length(subsetpoints)) {
      
      #table of all distances
@@ -252,20 +273,6 @@ oceanedge = gDifference(
  
  }
  
- 
- #One alternative method is to use rgeos dist2line function.  This gives a matrix of distance, lon, and lat
- #or maptools nearestPointOnLine(oceanedge, subsetpoint[1,])
- 
-#basically, find nearest point on line to sampling point.  Draw a line between them.  continue line until it reaches landward edge and cut it off here. Calculate length of line.
+###################################
+##################################
    
-   
-   
- ############################ Attribute subset of points with ADPE and EMPE dist, size, and names
-   
-   
-   
-   
-   
-   
-   
-   #writeOGR(obj=region,dsn="Q:/Petaluma/djongsomjit/Documents/projects/sealsfromspace/nic_ice",layer="region",driver="ESRI Shapefile")
