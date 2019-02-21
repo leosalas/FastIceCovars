@@ -8,7 +8,7 @@
 ########################
 # Load packages
 # list packages required
-list.of.packages <- c("rgdal", "proj4","rgeos","maptools","raster","stringr","dplyr","xml2","httr")
+list.of.packages <- c("rgdal", "proj4","rgeos","maptools","raster","stringr","plyr","dplyr","xml2","httr")
 
 # see if packages are missing and install them
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -27,11 +27,11 @@ working.dir<-"//prbo.org/Data/Home/Petaluma/djongsomjit/Documents/projects/seals
 setwd(working.dir)
 
 #location where downloaded NIC ice layers will be saved
-nicsavedir<-"//prbo.org/Data/Home/Petaluma/djongsomjit/Documents/projects/sealsfromspace/testing"
+nicsavedir<-"c:/temp"
 #location where analysis results will be saved
-resultsdir<-"//prbo.org/Data/Home/Petaluma/djongsomjit/Documents/projects/sealsfromspace/testing/"
+resultsdir<-"c:/temp/"
 #your local git repo path
-pathToGit<-"//prbo.org/data/home/petalume/djongsomjit/documents/fasticecovars/"
+pathToGit<-"c:/users/lsalas/git/fasticecovars/"
 
 #########################
 # Define functions 
@@ -136,35 +136,103 @@ getEdges<-function(areas){
 	return(list=c(oceanedge=oceanedge,landedge=landedge))
 }
 
-#FUNCTION to get the point nearest to the land for each survey point on fast ice
-getNearLand<-function(ledge,setpoints){
-	#convert land edge to df of vertices for use in nearestPointOnLine
-	point_coordinates = c()
-	for (i in 1: length(ledge[1,]@lines[[1]]@Lines)) {
-		line1 <- ledge[1,]@lines[[1]]@Lines[[i]]
-		line1coords <- line1@coords
-		point_coordinates = rbind(point_coordinates, line1coords)
-	}
-	
-	#Get coordinates of nearest point on land together with sampling location and place into data frame (1 row is a xy of the nearest location and xy of the sampling location)
-	near_coordinates = c()
-	for (ss in 1:10){  #this will run test on 10 sampling locations
-		nearland<-nearestPointOnLine(point_coordinates, setpoints[ss,]@coords)
-		near_coordinates = rbind(near_coordinates, cbind(nearland[1],nearland[2],setpoints[ss,]@coords))
-	}
-	
-	return(nearland)	
+#FUNCTION Constructing delta to calc roots
+delta<-function(A,B,C){
+	delval<-(B^2)-(4*A*C)
+	return(delval)
 }
+
+#FUNCTION to calculate the quadratic roots
+getQuadRoots<-function(x,cdf){
+	A<-cdf[x,"qA"];B<-cdf[x,"qB"];C<-cdf[x,"qC"];m<-cdf[x,"m"];b<-cdf[x,"b"]
+	px<-cdf[x,"px"];py<-cdf[x,"py"]
+	if(delta(A,B,C) > 0){ # first case D>0
+		x_1<-(-B+sqrt(delta(A,B,C)))/(2*A);y_1<-(m*x_1)+b 
+		x_2<-(-B-sqrt(delta(A,B,C)))/(2*A);y_2<-(m*x_2)+b 
+		#take the closest to px,py
+		d1<-((px-x_1)^2)+((py-y_1)^2)
+		d2<-((px-x_2)^2)+((py-y_2)^2)
+		if(d1<d2){
+			rtx<-x_1;rty<-y_1
+		}else{
+			rtx<-x_2;rty<-y_2
+		}
+	}
+	else if(delta(a,b,c) == 0){ # second case D=0
+		rtx<--B/(2*a);rty<-(m*rtx)+b
+		
+	}else {rtx=rty=NA} # third case D<0
+	tdf<-cdf[x,]
+	tdf$rtx<-rtx;tdf$rty<-rty
+	return(tdf)
+}
+
+
+#FUNCTION to get the point nearest to the land for each survey point on fast ice
+getNearLand<-function(ledge,setpoints,dist=100000){
+	#convert land edge to df of vertices for use in nearestPointOnLine
+	pcoordf<-ldply(.data=1:length(ledge@lines[[1]]@Lines),.fun=function(i,ledge){
+				line1 <- ledge[1,]@lines[[1]]@Lines[[i]];
+				line1coords <- line1@coords;
+				line1coords <- as.data.frame(line1coords)
+				line1coords$lineId<-i
+				return(line1coords)
+			},ledge=ledge)
+	
+	pcoordf$pid<-1:nrow(pcoordf)
+	nrec<-nrow(pcoordf)
+	near_coordinates<-ldply(.data=1:nrow(setpoints),.fun=function(ss,setpoints,pcoordf){
+				pco<-setpoints[ss,]@coords;
+				pcoordf$dist<-apply(pcoordf[,c("x","y")],1,FUN=function(x,pco){
+							ed=sqrt(((x[1]-pco[1])^2)+((x[2]-pco[2])^2));
+							return(ed)},pco=pco);
+				pcoordsort<-pcoordf[order(pcoordf$dist),];
+				topLineId<-pcoordsort[1,"lineId"];
+				qq<-as.matrix(subset(pcoordf,lineId==topLineId,select=c("x","y")));
+				nearland<-nearestPointOnLine(qq, pco);
+				neardf<-data.frame(nx=nearland[1],ny=nearland[2],px=pco[1],py=pco[2],pointId=as.character(setpoints$pointid[ss]),lineId=topLineId);
+				return(neardf)
+			},setpoints=setpoints,pcoordf=pcoordf)
+	
+	#We now have two points to convert to a polyLine to intersect with the fastice edges: the grid point and its nearest coastline point
+	#WE SHOULD generate the nearest coastline points for all grid points 
+	#Next we find the nearest fastice edge segment, then intersect the polylines, retrieve the point, and calculate distance to nearest respective coastline point
+	#ASK DJ about nearest fastice edge point first; do not re-create the wheel
+	
+	# Calculate locations where spatial lines intersect
+	int.pts <- gIntersection(sl1, sl2, byid = TRUE)
+	int.coords <- int.pts@coords
+	
+	
+	
+	#DO THIS BY HAND First
+	#x2 = p, x1=n
+	#convert the x coordinates to positives (longitudes are negative in the East)
+	#near_coordinates$nx<--1*near_coordinates$nx;near_coordinates$px<--1*near_coordinates$px
+	near_coordinates$m<-(near_coordinates$py-near_coordinates$ny)/(near_coordinates$px-near_coordinates$nx)
+	near_coordinates$b<-((near_coordinates$ny*near_coordinates$px)-(near_coordinates$py*near_coordinates$nx))/(near_coordinates$px-near_coordinates$nx);
+	near_coordinates$Z<-near_coordinates$b-near_coordinates$ny
+	
+	near_coordinates$qA<-(near_coordinates$m^2)+1
+	near_coordinates$qB<-2*(((near_coordinates$m*near_coordinates$Z)-near_coordinates$nx)-near_coordinates$nx)
+	near_coordinates$qC<-(near_coordinates$nx^2)+(near_coordinates$Z^2)-(dist^2)
+	rootdf<-ldply(.data=1:nrow(near_coordinates),.fun=getQuadRoots,cdf=near_coordinates)
+	return(rootdf)	
+}
+
+#now we have the table with all the data, plus the points that make the segment: nx,ny,px,py,rtx,rty
+#need to intersect each segment with the set of segments in edge nearest to px,py
+#fasticewidth is then the distance between nx,ny and edgx,edgy
+
 
 #########################
 # Load data 
 #########################
 	
 # Read the feature class 5km grid sample points This will be the pre-attributed set of points with 227507
-pointdsn<-paste0(pathToGit,"studyarea_points.shp")
-pts <- readOGR(dsn=pointdsn,layer="studyarea_points")
+load(paste0(pathToGit,"studyarea_points.RData"))
 #Get main projection that will be used 
-primaryproj<-CRS(projection(pts))
+primaryproj<-CRS(projection(studyarea_points))
 
 #### Hook for vector loop
 # To get NIC data... Remove warns of certificate at NIC
@@ -174,7 +242,7 @@ filename<-getNICfilename()	#using defaults for example
 
 #Downloading one file using the first date listed, but alter as needed.
 Filelocation<-paste0("https://www.natice.noaa.gov/pub/weekly/antarctic/",filename[1])
-savename<-paste0(nicsavedir,substr(filename[1],29,46))	
+savename<-paste0(nicsavedir,"/",substr(filename[1],29,46))	
 download.file(Filelocation,destfile=savename,method="libcurl")
 unzip(zipfile=savename,exdir=nicsavedir)	
 
@@ -191,10 +259,23 @@ edges<-getEdges(areas=myareas)
 
 #Subset ALL points to only those within fast ice
 fast<-myareas$fast
-subsetpoints <- pts[fast,]
- 
-testdf<-getNearLand(ledge=edges$landedge,setpoints=subsetpoints)
-   
+subsetpoints <- studyarea_points[fast,]
+
+#debugging
+ledge=edges$landedge
+#hrr.shp.2 <- spTransform(hrr.shp, CRS("+init=epsg:26978"))
+setpoints=subsetpoints[1:10,]
+dist=100000
+
+
+tm<-Sys.time()
+testdf<-getNearLand(ledge=edges$landedge,setpoints=subsetpoints[1:10,]) #example using first 10 points
+Sys.time()-tm
+
+tm<-Sys.time()
+testdf<-getNearLand(ledge=edges$landedge,setpoints=subsetpoints[1:100,]) #example using first 10 points
+Sys.time()-tm
+
    
 
 
