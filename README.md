@@ -41,7 +41,7 @@ NEED to explain what each file does...
 For processing, all objects were in or re-projected to the Antarctic Polar Stereographic WGS84 projection  
 Proj4 = "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0"
  
-Citations:
+## Citations
 Arndt, J.E., H. W. Schenke, M. Jakobsson, F. Nitsche, G. Buys, B. Goleby, M. Rebesco, F. Bohoyo, J.K. Hong, J. Black, R. Greku,  
 G. Udintsev, F. Barrios, W. Reynoso-Peralta, T. Morishita, R. Wigley, "The International Bathymetric Chart of the Southern Ocean  
 (IBCSO) Version 1.0 - A new bathymetric compilation covering circum-Antarctic waters", Geophysical Research Letters,  
