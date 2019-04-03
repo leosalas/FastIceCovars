@@ -27,9 +27,9 @@ From this layer then:
 * The 5-km grids was then used to create the 5-km sampling location shapefile (i.e. the cell centroids from the raster)  
    using the Raster to Point tool of ArcGIS.  These sampling locations can be filtered to locations of interest.  
    For the purpose of this work, we used areas where fast ice is potentially present. 
-* We limited the points to a minimum latitude of XX, and a maximum determined by the land plus ice shelf mask.
+* We limited the points to a minimum latitude of 60 degees South, and a maximum determined by the land-plus-ice shelf mask.
 * The points were thus attributed with mean slope and bathymetry. We then calculated distance to the 300-m isobath  
-   using the XX tool of ArcGIS.
+   using the XX tool of ArcGIS. (Dennis to complete)
      
 The resulting shapefile is ready for use in the R environment.
 
@@ -37,7 +37,7 @@ The resulting shapefile is ready for use in the R environment.
 The attributed shapefile is read into the R environment. Within R, each sampling location was further attributed with  
 spatially overlapping grid values or distances to shapefile features.
 
-NEED to explain what each file does...
+NEED to explain what each file does... (Leo to do)
 
 ## Projection
 For processing, all objects were in or re-projected to the Antarctic Polar Stereographic WGS84 projection  
@@ -46,10 +46,10 @@ Proj4 = "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=W
             +no_defs +ellps=WGS84 +towgs84=0,0,0"
  
 ## Citations
-Arndt, J.E., H. W. Schenke, M. Jakobsson, F. Nitsche, G. Buys, B. Goleby, M. Rebesco, F. Bohoyo, J.K. Hong, J. Black,  
+- Arndt, J.E., H. W. Schenke, M. Jakobsson, F. Nitsche, G. Buys, B. Goleby, M. Rebesco, F. Bohoyo, J.K. Hong, J. Black,  
    R. Greku, G. Udintsev, F. Barrios, W. Reynoso-Peralta, T. Morishita, R. Wigley, "The International Bathymetric Chart  
    of the Southern Ocean (IBCSO) Version 1.0 - A new bathymetric compilation covering circum-Antarctic waters",  
    Geophysical Research Letters, doi: 10.1002/grl.50413
 
-British Antarctic Survey. 1998. Antarctic Digital Database, Version 2.0. Manual and bibliography. Scientific Committee  
+- British Antarctic Survey. 1998. Antarctic Digital Database, Version 2.0. Manual and bibliography. Scientific Committee  
    on Antarctic Research, Cambridge. 74 pp. https://www.add.scar.org/
