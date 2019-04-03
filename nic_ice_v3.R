@@ -1,15 +1,14 @@
-# TODO: Add comment
+# TODO: Think of ways to re-write loop processing subdf with plyr, parallelization
 # 
-# Author: djongsomjit & lsalas
-###############################################################################
+# Author: Dennis Jongsomjit (djongsomjit@pointblue.org) and Leo Salas (lsalas@pointblue.org)
+##############################################################################################
 
 
 ########################
 # Dependencies
 ########################
-# Load packages
 # list packages required
-list.of.packages <- c("rgdal", "proj4","rgeos","maptools","raster","stringr","plyr","dplyr","xml2","httr","ggplot2")
+list.of.packages <- c("rgdal", "proj4","rgeos","maptools","raster","stringr","plyr","dplyr","xml2","httr","ggplot2","data.table","SDraw")
 
 # see if packages are missing and install them
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -20,7 +19,7 @@ lapply(list.of.packages, require, character.only = TRUE)
 
 
 #########################
-#Set environment variables 
+#Set environment variables - EDIT AS NEEDED
 #########################
 
 #location where downloaded NIC ice layers will be saved
@@ -34,9 +33,20 @@ pathToGit<-"c:/users/lsalas/git/fasticecovars/"
 # Define functions 
 #########################
 
-## FUNCTION download and unzip NIC data
+## FUNCTION to download and unzip the target NIC data
+# filename is the name of the NIC file to retrieve - obtained with function getNICfilename
+# returns the name of the unpacked file, including its path
+nicDownload<-function(filename){
+	Filelocation<-paste0("https://www.natice.noaa.gov/pub/weekly/antarctic/",filename[1])
+	savename<-paste0(nicsavedir,"/",substr(filename[1],29,46))	
+	download.file(Filelocation,destfile=savename,method="libcurl")
+	unzip(zipfile=savename,exdir=nicsavedir)
+	return(savename)
+}
+
+## FUNCTION to access the downloaded NIC data
 # filename is the name of a single NIC dataset, retrieved with the function getNICfilename
-# fileloc is the full path to the downloaded NIC data file, with the .zip file name
+# fileloc is the full path to the downloaded and unzipped NIC data file (shapefile), with the .shp file name
 # dataproj is the projection of the data, here named "primaryproj"
 getFastIce<-function(fileloc,dataproj){
 	print("processing single fast ice date")
@@ -70,6 +80,9 @@ getFastIce<-function(fileloc,dataproj){
 # getmonth is the name of a month, first three characters, first inupper case; defaults to "Nov"
 # getyear is the 4-number year; defaults to 2011
 getNICfilename<-function(getmonth="Nov",getyear=2011){
+	# To get NIC data... Remove warns of certificate at NIC
+	set_config( config( ssl_verifypeer = 0L ) )
+	
 	#we send request here
 	urlv<-"https://www.natice.noaa.gov/products/weekly_products.html"
 	
@@ -135,6 +148,30 @@ getEdges<-function(areas){
 	return(list=c(oceanedge=oceanedge,landedge=landedge))
 }
 
+## FUNCTION to plot grid points, and their nearest land points
+# subdf is the data.frame obtained from a spatial_points data.frame with all points on fast ice for the NIC date chosen
+# edges is a spatial_lines data.frame outlining the continent's edge
+# myareas is a list with the spatial polygons of fast ice for the NIC date chosen
+showPoints<-function(subdf,edges,myareas){
+	
+	edgesldf<-SpatialLinesDataFrame(edges$landedge, data=data.frame(ID=1))
+	edgedf<-fortify(edgesldf)
+	pc<-ggplot(data=edgedf, aes(x=long, y=lat)) + geom_path(aes(group=group)) + theme_bw()
+	pc<-pc + geom_point(data=subdf,aes(x=coords.x1,y=coords.x2),color="blue",size=0.2) + geom_point(data=subdf,aes(x=near_x,y=near_y),color="red",size=0.1)
+	
+	icedf<-fortify(myareas$fast)
+	subedge<-subset(edgedf,long>100000 & long<1000000 & lat< -500000 & lat > -1500000)
+	subsubdf<-subset(subdf,coords.x1>100000 & coords.x1<1000000 & coords.x2< -500000 & coords.x2 > -1500000)
+	subicedf<-subset(icedf,long>100000 & long<1000000 & lat< -500000 & lat > -1500000)
+	pe<-ggplot(data=subedge, aes(x=long, y=lat)) + geom_path(aes(group=group)) + theme_bw()
+	pe<-pe + geom_point(data=subsubdf,aes(x=coords.x1,y=coords.x2),color="blue",size=0.2) + geom_point(data=subsubdf,aes(x=near_x,y=near_y),color="red",size=0.1)
+	pe<- pe + geom_path(data=subicedf,aes(x=long, y=lat,group=group),color="gray")
+	
+	print(pc)
+	dev.new();print(pe)
+		
+}
+
 ## FUNCTION to make segments in 8 directions from each grid point
 # pt is the point to use
 # dst is the length in m for the segment
@@ -196,7 +233,7 @@ getNearestIceEdge<-function(ptcoord,gplines,fip,neland,edgl){
 	}
 	
 	resdf<-data.frame(edge_x=distdf[1,"xout"],edge_y=distdf[1,"yout"],distEdge=distdf[1,"distedge"],totalIceDist=totID)
-
+	
 	return(resdf)
 }
 
@@ -218,100 +255,108 @@ getIntersectPoints<-function(aa,xgp,ygp){
 }
 
 ## FUNCTION to get fast ice width for each grid point
-# gp is the grid points data frame (not spatial)
-# fip is the fast ice spatial polygons data frame
-# edgp is the spatial lines data on land edges
-# dist is the distance away in each direction to extend from the point and intersect with the ice polygon
-calcFasIceWidth<-function(gp,fip,edgp,dist=100000){
-	#for each point, set the 4 lines at distance 100 km
-	fastdf<-ldply(.data=c(1:nrow(gp)),.fun=function(pp,gpnt,distnc,fipol,edgpt){
-				spdf<-gpnt[pp,]; lid<-spdf$nearLineId
-				#create the 8 segments
-				gplines<-makeSegments(pnt=spdf,dst=distnc,rosprj=projection(fipol));
-				#overlap with ice polygons and return closest distance furthest from nearland
-				edglin<-edgpt@lines[[1]]@Lines[lid];edglins<-Lines(edglin,ID=lid);edglinslst<-list(edglins)
-				edgl<-SpatialLines(edglinslst);	projection(edgl)<-projection(fipol)
-				icepoint<-getNearestIceEdge(ptcoord=spdf[,c("coords.x1","coords.x2")],gplines=gplines,fip=fipol,neland=spdf[,c("near_x","near_y")],edgl=edgl);
-				icepoint$iceWidth<-icepoint$distEdge+spdf$distToShore;
-				return(icepoint)
-			},gpnt=gp,distnc=dist,fipol=fip,edgpt=edgp)
+# savename is the name of the downloaded NIC ice data, including its path
+# primaryproj is the projection used by the spatial points file of grid points
+# studyarea_pointswLand is the spatial points table of grid points, already attributed with nearest land point
+# buffwidth is the size (in meters) of a circular buffer to count how many 50-m edgepoints are within it - a metric of fast ice stability and abundance
+# plotit indicates if plots of the continent-wide and Erebus-only grid points and their nearest land points be made
+calcFasIceWidth<-function(savename,primaryproj,studyarea_pointswLand,buffwidth=20000,plotit=TRUE){
+	#run function to get the fast ice data ready to be processed
+	myareas<-getFastIce(fileloc=savename,dataproj=primaryproj)
 	
-	res<-cbind(gp,fastdf)
-	return(res)
+	#get the lines for land (landedge) and fast ice (ocenedge) edges: 
+	edges<-getEdges(areas=myareas)
+	
+	#Subset ALL points to only those within fast ice
+	fast<-myareas$fast
+	subsetpoints <- studyarea_pointswLand[fast,]
+	subdf<-as.data.frame(subsetpoints)
+	
+	if(plotit==TRUE){
+		#see what we got:				************************************************ Optional
+		showPoints(subsetpoints,edges,myareas)
+	}
+	
+	#get fast ice edge and add points 50m along it
+	oedge<-edges$oceanedge
+	npts<-round(lineLength(oedge)/50)	
+	icedgedf<-spsample(oedge,n=npts,type="regular")
+	icedgedf<-data.table(as.data.frame(icedgedf))
+	
+	#now loop through the subsetpoints to find the nearest point in icedgedf
+	subdf$iceedge.x1<-NA;subdf$iceedge.x2<-NA;subdf$distNearestIceEdge<-NA;subdf$fastIceAbund<-NA
+	edgpts<-icedgedf[,c("x","y")]
+	coordinates(edgpts)<-c("x","y")
+	projection(edgpts)<-CRS(projection(subsetpoints))
+	
+	#time it...
+	tm<-Sys.time()
+	for(rr in 1:(nrow(subdf))){
+		icedgedf$gptx<-subdf[rr,"coords.x1"];icedgedf$gpty<-subdf[rr,"coords.x2"]
+		icedgedf[,dist:=sqrt(((x-gptx)^2)+((y-gpty)^2))]
+		icedgedf<-setorder(icedgedf,dist)
+		
+		tdf<-data.frame(gptx=icedgedf[1,"gptx"],gpty=icedgedf[1,"gpty"])
+		coordinates(tdf)<-c("gptx","gpty")
+		projection(tdf)<-CRS(projection(subsetpoints))
+		pntbuff<-gBuffer(tdf,width=20000)
+		qq<-over(tdf,pntbuff)
+		subdf[rr,"iceedge.x1"]<-icedgedf[1,"x"];subdf[rr,"iceedge.x2"]<-icedgedf[1,"y"];
+		subdf[rr,"distNearestIceEdge"]<-icedgedf[1,"dist"];subdf$fastIceAbund<-sum(!is.na(qq))
+	}
+	proctim<-Sys.time()-tm
+	print(paste("Processing time:",proctim))
+	
+	#ice width is the sum of dist to edge and distance to land
+	subdf$fastIceWidth<-subdf$distToShore+subdf$distNearestIceEdge
+	
+	### Convert back to spatial points...
+	FastIcePoints<-subdf
+	coordinates(FastIcePoints)<-c("coords.x1","coords.x2")
+	proj4string(FastIcePoints)<-primaryproj
+	
+	return(FastIcePoints)
 }
 
 #########################
-# Load data 
+# Load the NIC data 
 #########################
 
+#### CHOOSE NIC DATE
+# List the desired NIC filenames:
+icemonth="Nov";iceyear=2011
+filename<-getNICfilename(getmonth=icemonth,getyear=iceyear)	#   ********************* User specifies date + point buffer and the function does the rest
+nicdtdf<-data.frame(NICdate=1:NROW(filename),FileName=filename);print(nicdtdf)
+
+print("******************************************************************************************************************")
+print("***** STOP: review the NIC dates printed above; choose one date by entering the line number below  ***************")
+print("******************************************************************************************************************")
+
+fn<-1 #  ******************************************** User specifies the desired available NIC date
+
+#nf<-readline(paste0("Which NICdate to use? (1 to ",NROW(filename),"): "))
+#Downloading one file using the date selected, and unzipping.
+if(fn<1 | fn>NROW(filename)){fn<-1}
+savename<-nicDownload(filename[fn])	
+
+
+#########################
+# Load the grid point data 
+#########################
 # Read the feature class 5km grid sample points This will be the pre-attributed set of points with 227507
 load(paste0(pathToGit,"studyarea_points_wNearLand.RData"))
 #Get main projection that will be used 
 primaryproj<-CRS(projection(studyarea_pointswLand))
 
-#### Hook for vector loop
-# To get NIC data... Remove warns of certificate at NIC
-set_config( config( ssl_verifypeer = 0L ) )
-# List the desired NIC filenames:
-filename<-getNICfilename()	#using defaults for example,Nov 2011
-
-#Downloading one file using the first date listed, but alter as needed.
-Filelocation<-paste0("https://www.natice.noaa.gov/pub/weekly/antarctic/",filename[1])
-savename<-paste0(nicsavedir,"/",substr(filename[1],29,46))	
-download.file(Filelocation,destfile=savename,method="libcurl")
-unzip(zipfile=savename,exdir=nicsavedir)	
-
-
-#########################
-# Process the data
-#########################
-
-#run function to get the fast ice data ready to be processed
-myareas<-getFastIce(fileloc=savename,dataproj=primaryproj)
-
-#get the lines for land (landedge) and fast ice (ocenedge) edges: 
-edges<-getEdges(areas=myareas)
-
-#Subset ALL points to only those within fast ice
-fast<-myareas$fast
-subsetpoints <- studyarea_pointswLand[fast,]
-
-#see what we got:
-subdf<-as.data.frame(subsetpoints)
-edgesldf<-SpatialLinesDataFrame(edges$landedge, data=data.frame(ID=1))
-edgedf<-fortify(edgesldf)
-p<-ggplot(data=edgedf, aes(x=long, y=lat)) + geom_path(aes(group=group)) + theme_bw()
-p<-p + geom_point(data=subdf,aes(x=coords.x1,y=coords.x2),color="blue",size=0.2) + geom_point(data=subdf,aes(x=near_x,y=near_y),color="red",size=0.1)
-
-#zoom to near Erebus bay to check - add fast ice polygon
-icedf<-fortify(myareas$fast)
-
-subedge<-subset(edgedf,long>100000 & long<1000000 & lat< -500000 & lat > -1500000)
-subsubdf<-subset(subdf,coords.x1>100000 & coords.x1<1000000 & coords.x2< -500000 & coords.x2 > -1500000)
-subicedf<-subset(icedf,long>100000 & long<1000000 & lat< -500000 & lat > -1500000)
-p<-ggplot(data=subedge, aes(x=long, y=lat)) + geom_path(aes(group=group)) + theme_bw()
-p<-p + geom_point(data=subsubdf,aes(x=coords.x1,y=coords.x2),color="blue",size=0.2) + geom_point(data=subsubdf,aes(x=near_x,y=near_y),color="red",size=0.1)
-p<- p + geom_path(data=subicedf,aes(x=long, y=lat,group=group),color="gray")
-
 
 ###############################
 #Calculate fast ice width
 ##############################
-edgp<-edges$landedge
-tm<-Sys.time()
-subsetpoints_wIceWidth<-calcFasIceWidth(gp=subdf[1:10,],fip=myareas$fast,edgp=edgp,dist=100000)
-Sys.time()-tm
+FastIcePoints<-calcFasIceWidth(subdf,edges,buffwidth=20000)
 
+save(FastIcePoints,file=paste0(resultsdir,"FastIcePoints_wFastIceCovars_",icemonth,iceyear,".RData"))
+#save as shapefile too
+writeOGR(obj=FastIcePoints, dsn=paste0(resultsdir,"FastIcePoints_wFastIceCovars_",icemonth,iceyear), layer=paste0("FastIcePoints",icemonth,iceyear), driver="ESRI Shapefile")
 
-subedge<-subset(edgedf,long< -100000 & long> -250000 & lat< 2500000 & lat > 2000000)
-subsubdf<-subset(subdf,coords.x1>-250000 & coords.x1< -100000 & coords.x2< 2500000 & coords.x2 > 2000000)
-subicedf<-subset(icedf,long< -100000 & long> -250000 & lat< 2500000 & lat > 2000000)
-p<-ggplot(data=subedge, aes(x=long, y=lat)) + geom_path(aes(group=group)) + theme_bw()
-p<-p + geom_point(data=subsubdf,aes(x=coords.x1,y=coords.x2),color="blue",size=1) + geom_point(data=subsubdf,aes(x=near_x,y=near_y),color="red",size=1)
-p<- p + geom_path(data=subicedf,aes(x=long, y=lat,group=group),color="gray")
-p<- p + geom_point(x=subdf[1,"coords.x1"],y=subdf[1,"coords.x2"],color="green",size=2)
-
-p<- p + geom_point(data=subsetpoints_wIceWidth[1,],aes(x=edge_x,y=edge_y),color="black",size=2) +
-		geom_point(data=subsetpoints_wIceWidth[1,],aes(x=near_x,y=near_y),color="red",size=2)
 
 
