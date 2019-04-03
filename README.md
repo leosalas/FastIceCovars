@@ -1,5 +1,7 @@
 # FastIceCovars
-Scripts to generate the fast ice covariate data for the Seals from Space project
+Scripts to generate the fast ice covariate data for the Seals from Space project.  
+For more information, contact Dennis Jongsomjit [djongsomjit@pointblue.org] or  
+Leo Salas [lsalas@p0intblue.org]
 
 ## Overall approach  
 We start with a raster dataset of bathymetric data. From this raster we construct a grid of the desired resolution  
@@ -45,9 +47,9 @@ Proj4 = "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=W
  
 ## Citations
 Arndt, J.E., H. W. Schenke, M. Jakobsson, F. Nitsche, G. Buys, B. Goleby, M. Rebesco, F. Bohoyo, J.K. Hong, J. Black,  
-  R. Greku, G. Udintsev, F. Barrios, W. Reynoso-Peralta, T. Morishita, R. Wigley, "The International Bathymetric Chart  
-  of the Southern Ocean (IBCSO) Version 1.0 - A new bathymetric compilation covering circum-Antarctic waters",  
-  Geophysical Research Letters, doi: 10.1002/grl.50413
+   R. Greku, G. Udintsev, F. Barrios, W. Reynoso-Peralta, T. Morishita, R. Wigley, "The International Bathymetric Chart  
+   of the Southern Ocean (IBCSO) Version 1.0 - A new bathymetric compilation covering circum-Antarctic waters",  
+   Geophysical Research Letters, doi: 10.1002/grl.50413
 
 British Antarctic Survey. 1998. Antarctic Digital Database, Version 2.0. Manual and bibliography. Scientific Committee  
-  on Antarctic Research, Cambridge. 74 pp. https://www.add.scar.org/
+   on Antarctic Research, Cambridge. 74 pp. https://www.add.scar.org/
