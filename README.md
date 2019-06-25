@@ -1,17 +1,18 @@
 # FastIceCovars
 Scripts to generate the fast ice covariate data for the Seals from Space project.  
 For more information, contact Dennis Jongsomjit [djongsomjit@pointblue.org] or  
-Leo Salas [lsalas@p0intblue.org]
+Leo Salas [lsalas@pointblue.org]
 
 ## Overall approach  
 We start with a raster dataset of bathymetric data. From this raster we construct a grid of the desired resolution  
-(in our case 5 km cells). This grid is then used to sample NIC data. All but the ice data are treated here as immutable:  
-mean depth, distance to shore, distance to the 300 m depth isobath, mean slope, distance to ADPE and EMPE colonies,  
-distance to glacier.
+(in our case 5 km cells). This grid is then used to sample NIC data. The following attributions are treated here  
+as immutable: mean depth, distance to shore, distance to the 300 m depth isobath, mean slope, distance to ADPE  
+and EMPE colonies, distance to glacier. Only the ice data attributions vary, and these depend on the NIC ice date  
+chosen to attribute the data.
 
 We provide a function to query the NIC database and then choose a specific date. Once chosen, the function filters  
-the grid for only points on fast ice, and retrieves distance to the edge, fast ice width and a simple metric of  
-how good the fast ice is around the point.
+the grid for only points on fast ice in the chosen date, and retrieves distance to the edge, fast ice width and a  
+simple metric of how good the fast ice is around the point.
 
 ### Preliminary work in ArcGIS
 A bathymetric grid of the southern ocean was obtained at a 500m resolution (IBCSO v1.0; Arndt et al. 2013).  
@@ -35,9 +36,23 @@ The resulting shapefile is ready for use in the R environment.
 
 ### Filtering and attribution of points using R 
 The attributed shapefile is read into the R environment. Within R, each sampling location was further attributed with  
-spatially overlapping grid values or distances to shapefile features.
+spatially overlapping grid values or distances to shapefile features. The following R script files should be run in  
+the order in which they are described here - starting with getLandEdge.R and ending with getNICice.R  
+Although the scripts could be combined into a single file, these files represent each a break point in a process  
+that together can take many hours to execute. By splitting the process in these individual files we sought to help  
+the user split the attribution process into smaller and hopefully more convenient time intervals.
 
-NEED to explain what each file does... (Leo to do)
+Step 1: The file getLandEdge.R uses a default NIC ice date to retrieve the land/ice shelf edge for the entire continent.  
+This edge dataset is saved in the git directory automatically and used by the ice attribution script (nic_ice_v3.R)
+  
+Step 2: The file attributeStudyAreaPoints.R creates the first attribution of the immutable features: bathymetry, slope, etc.  
+The output is the spatial points data.frame that is used by createNearestLandPoint.R to find the nearest land point  
+for each point in the grid.
+
+Step 3: The file createNearestLandPoint.R only does the attribution of the nearest land point, and must be run before  
+the ice attribution script.
+
+Step 4: attribute the points with fast ice data with the script getNICice.R
 
 ## Projection
 For processing, all objects were in or re-projected to the Antarctic Polar Stereographic WGS84 projection  
