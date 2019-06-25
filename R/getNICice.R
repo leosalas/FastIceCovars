@@ -257,12 +257,11 @@ getIntersectPoints<-function(aa,xgp,ygp){
 ## FUNCTION to get fast ice width for each grid point
 # savename is the name of the downloaded NIC ice data, including its path
 # primaryproj is the projection used by the spatial points file of grid points
+# myareas is the selected fast ice data (the areas with fast ice for the date chosen) - a list of spatial polygons 
 # studyarea_pointswLand is the spatial points table of grid points, already attributed with nearest land point
 # buffwidth is the size (in meters) of a circular buffer to count how many 50-m edgepoints are within it - a metric of fast ice stability and abundance
 # plotit indicates if plots of the continent-wide and Erebus-only grid points and their nearest land points be made
-calcFasIceWidth<-function(savename,primaryproj,studyarea_pointswLand,buffwidth=20000,plotit=TRUE){
-	#run function to get the fast ice data ready to be processed
-	myareas<-getFastIce(fileloc=savename,dataproj=primaryproj)
+calcFasIceWidth<-function(savename,primaryproj,myareas,studyarea_pointswLand,buffwidth=20000,plotit=TRUE){
 	
 	#get the lines for land (landedge) and fast ice (ocenedge) edges: 
 	edges<-getEdges(areas=myareas)
@@ -274,7 +273,7 @@ calcFasIceWidth<-function(savename,primaryproj,studyarea_pointswLand,buffwidth=2
 	
 	if(plotit==TRUE){
 		#see what we got:				************************************************ Optional
-		showPoints(subsetpoints,edges,myareas)
+		showPoints(subdf=as.data.frame(subsetpoints),edges=edges,myareas=myareas)
 	}
 	
 	#get fast ice edge and add points 50m along it
@@ -344,15 +343,17 @@ savename<-nicDownload(filename[fn])
 # Load the grid point data 
 #########################
 # Read the feature class 5km grid sample points This will be the pre-attributed set of points with 227507
-load(paste0(pathToGit,"studyarea_points_wNearLand.RData"))
+load(paste0(pathToGit,"data/studyarea_points_wNearLand.RData"))
 #Get main projection that will be used 
 primaryproj<-CRS(projection(studyarea_pointswLand))
+#run function to get the fast ice data ready to be processed
+myareas<-getFastIce(fileloc=savename,dataproj=primaryproj)
 
 
 ###############################
 #Calculate fast ice width
 ##############################
-FastIcePoints<-calcFasIceWidth(subdf,edges,buffwidth=20000)
+FastIcePoints<-calcFasIceWidth(savename=savename,primaryproj=primaryproj,myareas=myareas,studyarea_pointswLand=studyarea_pointswLand,buffwidth=20000,plotit=TRUE)
 
 save(FastIcePoints,file=paste0(resultsdir,"FastIcePoints_wFastIceCovars_",icemonth,iceyear,".RData"))
 #save as shapefile too

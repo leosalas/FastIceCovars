@@ -1,7 +1,7 @@
 # FastIceCovars
 Scripts to generate the fast ice covariate data for the Seals from Space project.  
 For more information, contact Dennis Jongsomjit [djongsomjit@pointblue.org] or  
-Leo Salas [lsalas@p0intblue.org]
+Leo Salas [lsalas@pointblue.org]
 
 ## Overall approach  
 We start with a raster dataset of bathymetric data. From this raster we construct a grid of the desired resolution  
