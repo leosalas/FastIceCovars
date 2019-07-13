@@ -15,7 +15,7 @@
 ########################
 # Load packages
 # list packages required
-list.of.packages <- c('rgeos','raster','rgdal','proj4','maptools','plyr')
+list.of.packages <- c('rgeos','raster','rgdal','proj4','maptools','plyr','data.table')
 # compare to existing packages
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 # install missing packages
@@ -69,8 +69,12 @@ attribute_studyAreaPoints<-function(studyAreaPoints,dataPath){
 	
 	
 	# Read the feature class 300 Contour points
-	contour300 <- readOGR(dsn="contour_300only_vertices.shp",layer="contour_300only_vertices")
+	load(paste0(dataPath,"cs300.RData"))
+	cs300<-data.table(cs300)
 	
+	# Read the feature class 800 Contour points
+	load(paste0(dataPath,"cs800.RData"))
+	cs800<-data.table(cs800)
 	
 	# Read the bathy and slope rasters.  Slope was created in degrees within ArcMap using the slope tool 
 	slope<-raster("slope_deg.tif")
@@ -123,16 +127,25 @@ attribute_studyAreaPoints<-function(studyAreaPoints,dataPath){
 	
 	 
 	##### 300M CONTOUR contdist
-	contdist<-ldply(.data=1:nrow(pts), .fun=function(i,contour300){
-				mydists<-gDistance(pts[i,], contour300, byid=TRUE)
-				tdf<-data.frame(cont300dist=mydists[which.min(mydists)])
+	cont300dist<-ldply(.data=1:nrow(pts), .fun=function(i,cs300){
+				plon<-coordinates(pts[1,])[,1];plat<-coordinates(pts[i,])[,2]
+				ans<-min(cs300[, sqrt(((coords.x1-plon)^2)+((coords.x2-plat)^2))])
+				tdf<-data.frame(cont300dist=ans)
 				return(tdf)
-			},contour300=contour300)
+			},cs300=cs300)
 	
+	
+	##### 800M CONTOUR contdist
+	cont800dist<-ldply(.data=1:nrow(pts), .fun=function(i,cs800){
+				plon<-coordinates(pts[1,])[,1];plat<-coordinates(pts[i,])[,2]
+				ans<-min(cs800[, sqrt(((coords.x1-plon)^2)+((coords.x2-plat)^2))])
+				tdf<-data.frame(cont800dist=ans)
+				return(tdf)
+			},cs800=cs800)
 	
 	 
 	 ####combine data frames
-	 mycovars<-cbind(adpedf, empedf, shoredist,glacierdf,contdist)
+	 mycovars<-cbind(adpedf, empedf, shoredist, glacierdf, cont300dist, cont800dist)
 	 
 	 
 	#########################
