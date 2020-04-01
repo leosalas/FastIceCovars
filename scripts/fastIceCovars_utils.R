@@ -10,27 +10,27 @@
 ## FUNCTION to download and unzip the target NIC data
 # filename is the name of the NIC file to retrieve - obtained with function getNICfilename
 # returns the name of the unpacked file, including its path
-nicDownload<-function(filename){
+nicDownload<-function(filename,nicsavedir){
 	Filelocation<-paste0("https://www.natice.noaa.gov/pub/weekly/antarctic/",filename[1])
 	savename<-paste0(nicsavedir,"/",substr(filename[1],29,46))	
 	download.file(Filelocation,destfile=savename,method="libcurl")
-	unzip(zipfile=savename,exdir=nicsavedir)
+	unzip(zipfile=savename,exdir=paste0(nicsavedir,substr(filename[1],29,40)))
 	return(savename)
 }
 
 ## FUNCTION to access the downloaded NIC data
-# filename is the name of a single NIC dataset, retrieved with the function getNICfilename
-# fileloc is the full path to the downloaded and unzipped NIC data file (shapefile), with the .shp file name
-# dataproj is the projection of the data, here named "primaryproj"
-getFastIce<-function(fileloc,dataproj){
+# fileloc is the full path to the downloaded zipped NIC data file 
+# dataproj is the projection of the target data, here named "primaryproj"
+# nicsavedir is the directory where the tool saves NIC data downloads
+getFastIce<-function(fileloc,dataproj,nicsavedir){
 	print("processing single fast ice date")
 	
-	#First function for 1 shapefile
-	
-	##########################Read unzipped shapefile, Select subset of points from full set.
-	#use this subset to attribute with Colony and Fast ice attributes
-	
 	#Read shapefile
+	loopdsn <-substr(fileloc,1,nchar(fileloc)-4)
+	dirnam<-str_sub(fileloc,-16,-5)
+	shplst<-list.files(paste0(nicsavedir,dirnam),pattern=".shp")
+	shpname<-substr(shplst[1],1,regexpr(".shp",shplst[1])-1)
+		
 	loopdsn <-paste0(str_sub(fileloc,0,-5),".shp")
 	shpname<-str_sub(fileloc,-16,-5)
 	#read shapefile
@@ -292,41 +292,51 @@ calcFasIceWidth<-function(savename,primaryproj,myareas,studyarea_pointswLand,buf
 }
 
 ## Function to get the data for fast ice stability, persistence, and predictability
+# spdf is the spatial.points data.frame
 # iceyear the ice year being sought from NIC
 # iceareas the set of fast ice polygons for the year and date requested
-# primaryproj is the projection used by the spatial points file of grid points
-# studyarea_pointswLand is the spatial points table of grid points, already attributed with nearest land point
-getFastIceSPPdata<-function(iceyear,iceareas,primaryproj,studyarea_pointswLand){
-	#Subset ALL points to only those within fast ice
-	targetpoints <- studyarea_pointswLand[iceareas,]
+getFastIceSPPdata<-function(spdf,iceyear,iceareas){
+	
+	primaryproj<-projection(spdf)
+	
+	if(iceareas!=""){#Subset ALL points to only those within desired areas
+		targetpoints <- spdf[iceareas,]
+	}else{
+		targetpoints <- spdf
+	}
+	
+		
+	## We want some specific metrics of fast ice:
+	## Three values: 
+	
+	###########
+	#	stability (is there fast ice at the end of December?)
 	stabilitydf<-data.frame(pointId=targetpoints$pointid)
 	
-	## We want some specific metrics of fast ice:
-	# Three values: 
-	#	stability (is there fast ice at the end of December?)
 	filename<-getNICfilename(getmonth="Dec",getyear=iceyear)	
-	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename[lastDec])
-	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj)
-	lastMPoints <- studyarea_pointswLand[lastM_areas$fast,]
+	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename=filename[lastDec],nicsavedir=nicsavedir)
+	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj,nicsavedir=nicsavedir)
+	lastMPoints <- spdf[lastM_areas$fast,]
 	lastMdf<-data.frame(pointId=lastMPoints$pointid,DecemberIcePresence=1)
 	stabilitydf<-merge(stabilitydf,lastMdf,by="pointId",all.x=TRUE)
 	stabilitydf$DecemberIcePresence<-ifelse(is.na(stabilitydf$DecemberIcePresence),0,1)
 	
+	###########
 	#	persistence (is there fast ice throughout February? Derived metric: is persistent if it’s there the past 2 years)
 	persistencedf<-data.frame(pointId=targetpoints$pointid)
-	year1prior<-as.character(as.numeric(iceyear)-1);year2prior<-as.character(as.numeric(iceyear)-2)
+	year1prior<-as.numeric(iceyear)-1;year2prior<-as.numeric(iceyear)-2
 	
 	filename<-getNICfilename(getmonth="Feb",getyear=year1prior)	
-	lastFeb<-NROW(filename);persistFeb1y<-nicDownload(filename[lastFeb])	
-	lastM_areas<-getFastIce(fileloc=persistFeb1y,dataproj=primaryproj)
+	lastFeb<-NROW(filename);persistFeb1y<-nicDownload(filename=filename[lastFeb],nicsavedir=nicsavedir)	
+	lastM_areas<-getFastIce(fileloc=persistFeb1y,dataproj=primaryproj,nicsavedir=nicsavedir)
 	lastMPoints <- studyarea_pointswLand[lastM_areas$fast,]
 	lastMdf<-data.frame(pointId=lastMPoints$pointid,February1Prior=1)
 	persistencedf<-merge(persistencedf,lastMdf,by="pointId",all.x=TRUE)
 	persistencedf$February1Prior<-ifelse(is.na(persistencedf$February1Prior),0,1)
 	
 	filename<-getNICfilename(getmonth="Feb",getyear=year2prior)	
-	lastFeb<-NROW(filename);persistFeb2y<-nicDownload(filename[lastFeb])	
-	lastM_areas<-getFastIce(fileloc=persistFeb2y,dataproj=primaryproj)
+	last2Feb<-NROW(filename);persistFeb2y<-nicDownload(filename=filename[last2Feb],nicsavedir=nicsavedir)	
+	lastM_areas<-getFastIce(fileloc=persistFeb2y,dataproj=primaryproj,nicsavedir=nicsavedir)
 	lastMPoints <- studyarea_pointswLand[lastM_areas$fast,]
 	lastMdf<-data.frame(pointId=lastMPoints$pointid,February2Prior=1)
 	persistencedf<-merge(persistencedf,lastMdf,by="pointId",all.x=TRUE)
@@ -335,17 +345,18 @@ getFastIceSPPdata<-function(iceyear,iceareas,primaryproj,studyarea_pointswLand){
 	persistencedf$Persistence2Years<-apply(persistencedf[,2:3],1,sum)
 	persistencedf<-persistencedf[,c("pointId","Persistence2Years")]
 	
+	###########
 	# 	predictability (derived from stability: stable in the past 5 years, but use the number of stable ice years).
 	#	Must be predictable by end of December
 	predictabilitydf<-data.frame(pointId=targetpoints$pointid)
-	year3prior<-as.character(as.numeric(iceyear)-3)
-	year4prior<-as.character(as.numeric(iceyear)-4)
-	year5prior<-as.character(as.numeric(iceyear)-5)
+	year3prior<-as.numeric(iceyear)-3
+	year4prior<-as.numeric(iceyear)-4
+	year5prior<-as.numeric(iceyear)-5
 	
 	#Y1
 	filename<-getNICfilename(getmonth="Dec",getyear=year1prior)	
-	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename[lastDec])
-	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj)
+	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename=filename[lastDec],nicsavedir=nicsavedir)
+	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj,nicsavedir=nicsavedir)
 	lastMPoints <- studyarea_pointswLand[lastM_areas$fast,]
 	lastMdf<-data.frame(pointId=lastMPoints$pointid,Dec1yP=1)
 	predictabilitydf<-merge(predictabilitydf,lastMdf,by="pointId",all.x=TRUE)
@@ -353,8 +364,8 @@ getFastIceSPPdata<-function(iceyear,iceareas,primaryproj,studyarea_pointswLand){
 	
 	#Y2
 	filename<-getNICfilename(getmonth="Dec",getyear=year2prior)	
-	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename[lastDec])
-	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj)
+	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename=filename[lastDec],nicsavedir=nicsavedir)
+	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj,nicsavedir=nicsavedir)
 	lastMPoints <- studyarea_pointswLand[lastM_areas$fast,]
 	lastMdf<-data.frame(pointId=lastMPoints$pointid,Dec2yP=1)
 	predictabilitydf<-merge(predictabilitydf,lastMdf,by="pointId",all.x=TRUE)
@@ -362,8 +373,8 @@ getFastIceSPPdata<-function(iceyear,iceareas,primaryproj,studyarea_pointswLand){
 	
 	#Y3
 	filename<-getNICfilename(getmonth="Dec",getyear=year3prior)	
-	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename[lastDec])
-	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj)
+	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename=filename[lastDec],nicsavedir=nicsavedir)
+	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj,nicsavedir=nicsavedir)
 	lastMPoints <- studyarea_pointswLand[lastM_areas$fast,]
 	lastMdf<-data.frame(pointId=lastMPoints$pointid,Dec3yP=1)
 	predictabilitydf<-merge(predictabilitydf,lastMdf,by="pointId",all.x=TRUE)
@@ -371,8 +382,8 @@ getFastIceSPPdata<-function(iceyear,iceareas,primaryproj,studyarea_pointswLand){
 	
 	#Y4
 	filename<-getNICfilename(getmonth="Dec",getyear=year4prior)	
-	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename[lastDec])
-	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj)
+	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename=filename[lastDec],nicsavedir=nicsavedir)
+	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj,nicsavedir=nicsavedir)
 	lastMPoints <- studyarea_pointswLand[lastM_areas$fast,]
 	lastMdf<-data.frame(pointId=lastMPoints$pointid,Dec4yP=1)
 	predictabilitydf<-merge(predictabilitydf,lastMdf,by="pointId",all.x=TRUE)
@@ -380,20 +391,19 @@ getFastIceSPPdata<-function(iceyear,iceareas,primaryproj,studyarea_pointswLand){
 	
 	#Y5
 	filename<-getNICfilename(getmonth="Dec",getyear=year5prior)	
-	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename[lastDec])
-	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj)
+	lastDec<-NROW(filename);stabilityDec<-nicDownload(filename=filename[lastDec],nicsavedir=nicsavedir)
+	lastM_areas<-getFastIce(fileloc=stabilityDec,dataproj=primaryproj,nicsavedir=nicsavedir)
 	lastMPoints <- studyarea_pointswLand[lastM_areas$fast,]
 	lastMdf<-data.frame(pointId=lastMPoints$pointid,Dec5yP=1)
 	predictabilitydf<-merge(predictabilitydf,lastMdf,by="pointId",all.x=TRUE)
 	predictabilitydf$Dec5yP<-ifelse(is.na(predictabilitydf$Dec5yP),0,1)
 	
-	predictdf<-predictabilitydf
-	predictdf$PredictabilityDec5Years<-apply(predictDecdf[,2:6],1,sum)
+	predictabilitydf$PredictabilityDec5Years<-apply(predictabilitydf[,2:6],1,sum)
 	
 	
 	## Prepare and return output df
 	outdf<-merge(stabilitydf,persistencedf,by="pointId")
-	outdf<-merge(outdf,predictdf,by="pointId")
+	outdf<-merge(outdf,predictabilitydf,by="pointId")
 	
 	return(outdf)
 }
