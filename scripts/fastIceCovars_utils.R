@@ -31,8 +31,6 @@ getFastIce<-function(fileloc,dataproj,nicsavedir){
 	shplst<-list.files(paste0(nicsavedir,dirnam),pattern=".shp")
 	shpname<-substr(shplst[1],1,regexpr(".shp",shplst[1])-1)
 		
-	loopdsn <-paste0(str_sub(fileloc,0,-5),".shp")
-	shpname<-str_sub(fileloc,-16,-5)
 	#read shapefile
 	region <- readOGR(dsn=loopdsn,shpname)
 	
