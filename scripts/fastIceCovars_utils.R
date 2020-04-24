@@ -14,7 +14,7 @@ nicDownload<-function(filename,nicsavedir){
 	Filelocation<-paste0("https://www.natice.noaa.gov/pub/weekly/antarctic/",filename[1])
 	savename<-paste0(nicsavedir,"/",substr(filename[1],29,46))	
 	download.file(Filelocation,destfile=savename,method="libcurl")
-	unzip(zipfile=savename,exdir=paste0(nicsavedir,substr(filename[1],29,40)))
+	unzip(zipfile=savename,exdir=paste0(nicsavedir,"/",substr(filename[1],29,40)))
 	return(savename)
 }
 
@@ -405,4 +405,50 @@ getFastIceSPPdata<-function(spdf,iceyear,iceareas){
 	
 	return(outdf)
 }
+
+## FUNCTION to re-attribute with distance to nearest ADPE and EMPE colony and with size of nearby ADPE and EMPE clusters 
+# studyarea_pointswLand is the spatial points table of grid points, already attributed with nearest land point
+# adpedf is the tada.frame from MLR with the appropriate colonies and sizes to use for 2011 for ADPE
+# empedf - see adpedf, mutatis mutandi
+getDistanceToPenguins2011<-function(studyarea_pointswLand,adpedf,empedf){
+	#subset studyarea_points to only those points with fast ice
+	fip<-as.data.frame(subset(studyarea_pointswLand,fastIcePresent==TRUE))
+	
+	#re-project penguin data to polar stereographic.
+	coordinates(adpedf)<-c("Longitude","Latitude")
+	proj4string(adpedf)<-CRS("+proj=longlat +datum=WGS84")
+	adpe<-spTransform(adpedf,CRS(proj4string(studyarea_pointswLand)))
+	adpe<-as.data.frame(adpe)
+	
+	coordinates(empedf)<-c("Longitude","Latitude")
+	proj4string(empedf)<-CRS("+proj=longlat +datum=WGS84")
+	empe<-spTransform(empedf,CRS(proj4string(studyarea_pointswLand)))
+	empe<-as.data.frame(empe)
+	#then calc distance and use the min
+	
+	
+
+	adpedist<-ldply(.data=fip$pointid,.fun=function(ii,fip,df){
+				flon<-as.numeric(subset(fip,pointid==ii)$coords.x1)
+				flat<-as.numeric(subset(fip,pointid==ii)$coords.x2)
+				df$ADPEdist<-sqrt(((df$Longitude-flon)^2)+((df$Latitude-flat)^2))
+				seldf<-df[which(df$ADPEdist==min(df$ADPEdist)),c("ADPEname","ADPEcount","ADPEdist")]
+				seldf$pointid<-ii
+				return(seldf)
+			},fip=fip, df=adpe)
+	
+	empedist<-ldply(.data=fip$pointid,.fun=function(ii,fip,df){
+				flon<-as.numeric(subset(fip,pointid==ii)$coords.x1)
+				flat<-as.numeric(subset(fip,pointid==ii)$coords.x2)
+				df$EMPEdist<-sqrt(((df$Longitude-flon)^2)+((df$Latitude-flat)^2))
+				seldf<-df[which(df$EMPEdist==min(df$EMPEdist)),c("EMPEname","EMPEcount","EMPEdist")]
+				seldf$pointid<-ii
+				return(seldf)
+			},fip=fip, df=empe)
+	
+	penguindf<-merge(adpedist,empedist,by="pointid")
+	
+	return(penguindf)
+}
+
 
