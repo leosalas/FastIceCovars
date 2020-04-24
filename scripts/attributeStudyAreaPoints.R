@@ -99,7 +99,7 @@ attribute_studyAreaPoints<-function(studyAreaPoints,dataPath){
 				mydists<-gDistance(pts[i,], adpe, byid=TRUE)
 								
 				tdf<-data.frame(adpedist=as.numeric(as.character(mydists[which.min(mydists)])),
-						#adpesize=as.character(adpe$Current_ab[which.min(mydists)]),	#skip this for now - wait for ML to give us data on size to use
+						#adpesize=as.character(adpe$Current_ab[which.min(mydists)]),	#skip this - we will use the number of penguins within a radius
 						adpecol=as.character(adpe$Name[which.min(mydists)]))
 				return(tdf)
 			},pts=pts,adpe=adpe)
@@ -111,7 +111,7 @@ attribute_studyAreaPoints<-function(studyAreaPoints,dataPath){
 			mydists<-gDistance(pts[i,], empe, byid=TRUE)
 			
 			tdf<-data.frame(empedist=mydists[which.min(mydists)],
-					#empesize=empe$colonysize[which.min(mydists)],		#skip this for now - wait for ML to give us data on size to use
+					#empesize=empe$colonysize[which.min(mydists)],		#skip this - we will use the number of penguins within a radius
 					empecol=as.character(empe$name[which.min(mydists)]))
 			return(tdf)
 		},pts=pts,empe=empe)
