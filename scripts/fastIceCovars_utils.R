@@ -30,7 +30,7 @@ getFastIce<-function(fileloc,dataproj,nicsavedir){
 	dirnam<-str_sub(fileloc,-16,-5)
 	shplst<-list.files(paste0(nicsavedir,dirnam),pattern=".shp")
 	shpname<-substr(shplst[1],1,regexpr(".shp",shplst[1])-1)
-		
+	
 	#read shapefile
 	region <- readOGR(dsn=loopdsn,shpname)
 	
@@ -303,7 +303,7 @@ getFastIceSPPdata<-function(spdf,iceyear,iceareas){
 		targetpoints <- spdf
 	}
 	
-		
+	
 	## We want some specific metrics of fast ice:
 	## Three values: 
 	
@@ -426,29 +426,58 @@ getDistanceToPenguins2011<-function(studyarea_pointswLand,adpedf,empedf){
 	empe<-as.data.frame(empe)
 	#then calc distance and use the min
 	
-	
-
+	#50 km cutoff
 	adpedist<-ldply(.data=fip$pointid,.fun=function(ii,fip,df){
 				flon<-as.numeric(subset(fip,pointid==ii)$coords.x1)
 				flat<-as.numeric(subset(fip,pointid==ii)$coords.x2)
 				df$ADPEdist<-sqrt(((df$Longitude-flon)^2)+((df$Latitude-flat)^2))
-				seldf<-df[which(df$ADPEdist==min(df$ADPEdist)),c("ADPEname","ADPEcount","ADPEdist")]
+				seldf<-df[which(df$ADPEdist==min(df$ADPEdist)),c("ADPEname","ADPEdist")]
 				seldf$pointid<-ii
+				#calculate the abundance: within 100 km, sum of weighted abundances,by log of distance (in km)
+				df<-subset(df,ADPEdist<=50000)
+				if(nrow(df)>0){
+					df$weight<-distanceWeightDecay(coff=50,df$ADPEdist)
+					df$weightedAbund<-df$ADPEcount*df$weight
+					seldf$ADPEabund<-sum(df$weightedAbund)
+				}else{
+					seldf$ADPEabund<-0
+				}
+				
 				return(seldf)
 			},fip=fip, df=adpe)
 	
-	empedist<-ldply(.data=fip$pointid,.fun=function(ii,fip,df){
+	#EMPE cutoff is 150 km
+	empedist<-ldply(.data=fip$pointid,.fun=function(ii,fip,df, s){
 				flon<-as.numeric(subset(fip,pointid==ii)$coords.x1)
 				flat<-as.numeric(subset(fip,pointid==ii)$coords.x2)
 				df$EMPEdist<-sqrt(((df$Longitude-flon)^2)+((df$Latitude-flat)^2))
-				seldf<-df[which(df$EMPEdist==min(df$EMPEdist)),c("EMPEname","EMPEcount","EMPEdist")]
+				seldf<-df[which(df$EMPEdist==min(df$EMPEdist)),c("EMPEname","EMPEdist")]
 				seldf$pointid<-ii
+				df<-subset(df,EMPEdist<=150000)
+				if(nrow(df)>0){
+					df$weight<-distanceWeightDecay(coff=150,df$EMPEdist)
+					df$weightedAbund<-df$EMPEcount*df$weight
+					seldf$EMPEabund<-sum(df$weightedAbund)
+				}else{
+					seldf$EMPEabund<-0
+				}
 				return(seldf)
-			},fip=fip, df=empe)
+			},fip=fip, df=empe, s=s)
 	
 	penguindf<-merge(adpedist,empedist,by="pointid")
 	
 	return(penguindf)
+}
+
+## This function calculates the decay slope and intercept and then estimates the weight based on distance
+# coff is the decay cutoff value, 50 km for ADEP and 150 km for EMPE
+# cdist is the colony distance in meters
+distanceWeightDecay<-function(coff,cdist){
+	s<--0.9/(log(coff)-log(2.5))
+	b<-1-(s*log(2.5))
+	cdkm<-cdist/1000
+	weight<-ifelse(cdkm<2.5,1,(log(cdkm)*s)+b)
+	return(weight)
 }
 
 
