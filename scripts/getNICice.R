@@ -55,7 +55,7 @@ fn<-1 #  ******************************************** User specifies the desired
 #nf<-readline(paste0("Which NICdate to use? (1 to ",NROW(filename),"): "))
 #Downloading one file using the date selected, and unzipping.
 if(fn<1 | fn>NROW(filename)){fn<-1}
-savename<-nicDownload(filename[fn])	
+savename<-nicDownload(filename[fn],nicsavedir="c:/temp/")	
 
 
 #########################
